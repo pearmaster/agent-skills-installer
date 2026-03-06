@@ -8,12 +8,31 @@ requires-python = ">=3.11"
 authors = [
     { name = "Jacob Brunson", email = "github@jacobbrunson.com" },
 ]
+keywords = ["agent-skills", "ai", "agents", "cli", "coding-agents"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
 dependencies = [
     "typer>=0.9",
     "questionary>=2.0",
     "python-frontmatter>=1.1",
     "tomli-w>=1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/pearmaster/agent-skills-installer"
+Repository = "https://github.com/pearmaster/agent-skills-installer"
+Issues = "https://github.com/pearmaster/agent-skills-installer/issues"
 
 [project.scripts]
 agent-skills-installer = "agent_skills_installer.cli:app"
@@ -24,9 +43,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_skills_installer"]
+
 [dependency-groups]
 dev = [
     "black>=25.0",
 ]
+
 [tool.black]
 target-version = ["py311"]
