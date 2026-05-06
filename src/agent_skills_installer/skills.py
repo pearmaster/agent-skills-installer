@@ -49,8 +49,12 @@ def discover_skills(repo_path: Path) -> list[SkillInfo]:
                     metadata=fm.get("metadata", {}),
                 )
             )
-        except Exception:
-            # Skip skills with unparseable frontmatter
+        except Exception as exc:
+            import sys
+            print(
+                f"⚠️  Skipping '{child.name}': failed to parse SKILL.md frontmatter ({exc})",
+                file=sys.stderr,
+            )
             continue
     return results
 

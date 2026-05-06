@@ -36,7 +36,13 @@ def main(
     """Agent Skills Installer – copy skills from git repos to local directories."""
     # If no subcommand was given, default to install
     if ctx.invoked_subcommand is None:
-        _install_command()
+        from agent_skills_installer.install import run_install
+
+        try:
+            run_install()
+        except KeyboardInterrupt:
+            typer.echo("\nAborted.")
+            raise typer.Exit(0)
 
 
 @app.command("install")

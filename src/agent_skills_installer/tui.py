@@ -165,7 +165,7 @@ def prompt_confirm_actions(summary: str) -> bool:
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
-def _format_skill_label(name: str, description: str, max_desc: int = 60) -> str:
+def _format_skill_label(name: str, description: str, max_desc: int = 256) -> str:
     """Format a skill name + description for display in a list."""
     if not description:
         return name
