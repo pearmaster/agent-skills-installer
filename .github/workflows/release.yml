@@ -1,0 +1,57 @@
+name: Release
+
+# Publishes to PyPI when a v* tag is pushed. The tag is the trigger, so
+# `git push --tags` is the point of no return — everything before it is local.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/agent-skills-installer
+    permissions:
+      id-token: write # PyPI trusted publishing
+      contents: write # create the GitHub release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Guards against tagging v0.4.0 while __init__.py still says 0.3.0,
+      # which would otherwise publish a wrongly-named release.
+      - name: Check tag matches package version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(python3 -c "import re, pathlib; \
+            print(re.search(r'__version__ = \"([^\"]+)\"', \
+            pathlib.Path('src/agent_skills_installer/__init__.py').read_text()).group(1))")
+          echo "tag=$tag package=$pkg"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match __version__ ($pkg)"
+            exit 1
+          fi
+
+      - name: Build
+        run: uv build
+
+      - name: Smoke-test the built wheel
+        run: |
+          wheel=$(ls dist/*.whl)
+          uv run --isolated --no-project --with "$wheel" agent-skills-installer --version
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes

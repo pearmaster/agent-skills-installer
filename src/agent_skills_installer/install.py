@@ -9,7 +9,18 @@ import typer
 from agent_skills_installer import config as cfg
 from agent_skills_installer import tui
 from agent_skills_installer.git_ops import GitError, cloned_repo
-from agent_skills_installer.skills import SkillInfo, copy_skill, discover_skills
+from agent_skills_installer.skills import (
+    SkillInfo,
+    copy_skill,
+    describe_install_status,
+    discover_skills,
+)
+
+_STATUS_PREFIXES = {
+    "REPLACES": "Replaces existing skill with the same name.",
+    "UPGRADE": "UPGRADE",
+    "INSTALLED": "INSTALLED",
+}
 
 
 def _resolve_destination(raw: str) -> Path:
@@ -50,14 +61,15 @@ def run_install(
         repo_url = tui.prompt_repo(recent or None)
 
     # 4. Clone & discover
-    typer.echo(f"\n⏳ Cloning {repo_url} …")
+    typer.echo(f"\n⏳ Fetching {repo_url} …")
     try:
         with cloned_repo(repo_url) as repo_path:
             skills = discover_skills(repo_path)
 
             if not skills:
                 typer.echo(
-                    "❌ No skills found in this repo (looked in skills/ subdirectory).",
+                    "❌ No skills found in this repo (looked in skills/, .claude/skills/, "
+                    "a root SKILL.md, then the rest of the repo).",
                     err=True,
                 )
                 raise typer.Exit(1)
@@ -65,14 +77,19 @@ def run_install(
             typer.echo(f"Found {len(skills)} skill(s).\n")
 
             # 5. Select skills
-            skill_dicts = [
-                {
-                    "name": s.name,
-                    "description": s.description,
-                    "source_path": s.source_path,
-                }
-                for s in skills
-            ]
+            skill_dicts = []
+            for s in skills:
+                status = describe_install_status(s, dest, repo_url)
+                description = s.description
+                if status is not None:
+                    description = f"{_STATUS_PREFIXES[status]} {description}".strip()
+                skill_dicts.append(
+                    {
+                        "name": s.name,
+                        "description": description,
+                        "source_path": s.source_path,
+                    }
+                )
 
             if skill_name:
                 # Filter to the requested skill – no interactive prompt
@@ -98,7 +115,7 @@ def run_install(
             typer.echo()
             for item in selected:
                 src = item["source_path"]
-                result = copy_skill(src, dest, repo_url)
+                result = copy_skill(src, dest, repo_url, dest_name=item["name"])
                 typer.echo(f"  ✅ Installed {item['name']} → {result}")
 
     except GitError as exc:

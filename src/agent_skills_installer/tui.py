@@ -6,19 +6,40 @@ from pathlib import Path
 
 import questionary
 from questionary import Choice
+from rich.console import Console
+from rich.text import Text
 
 # ── Styling ──────────────────────────────────────────────────────────
 
-STYLE = questionary.Style(
+_BASE_STYLE_RULES = [
+    ("qmark", "fg:cyan bold"),
+    ("question", "fg:white bold"),
+    ("pointer", "fg:cyan bold"),
+    ("highlighted", "fg:cyan bold"),
+    ("selected", "fg:green"),
+    ("answer", "fg:green bold"),
+]
+
+STYLE = questionary.Style(_BASE_STYLE_RULES)
+
+# Separate style for the skills checkbox list: overriding "text" here (used by
+# questionary for the "Description: ..." line shown below the list) would
+# otherwise recolor unrelated prompts (e.g. the plain destination/repo lists)
+# that also render through the "text" class.
+SKILL_LIST_STYLE = questionary.Style(
     [
-        ("qmark", "fg:cyan bold"),
-        ("question", "fg:white bold"),
-        ("pointer", "fg:cyan bold"),
-        ("highlighted", "fg:cyan bold"),
-        ("selected", "fg:green"),
-        ("answer", "fg:green bold"),
+        *_BASE_STYLE_RULES,
+        ("skill-name", "fg:white bold"),
+        ("skill-desc", "fg:#888888"),
+        ("text", "fg:yellow"),
     ]
 )
+
+# Reserve room for the pointer/checkbox indicator prefix questionary draws
+# before each row (e.g. "❯ ● ").
+_ROW_PREFIX_WIDTH = 4
+_MAX_NAME_COLUMN = 30
+_MIN_DESC_COLUMN = 20
 
 # ── Predefined destination directories ───────────────────────────────
 
@@ -28,6 +49,15 @@ DEFAULT_DESTINATIONS = [
     "~/.claude/skills/",
     "~/.opencode/skills/",
     "~/.copilot/skills/",
+]
+
+# Suggested when the current directory is a git repo (i.e. has a .git/), so
+# project-local skills can be installed alongside the repo's own config.
+PROJECT_DESTINATIONS = [
+    ".github/skills/",
+    ".claude/skills/",
+    ".agents/skills/",
+    ".opencode/skills/"
 ]
 
 OTHER_SENTINEL = "✏️  Other (enter path manually)"
@@ -42,11 +72,19 @@ def prompt_destination(last_used: str | None = None) -> Path:
 
     Returns an absolute :class:`Path`.
     """
+    cwd = Path.cwd()
+    project_destinations = []
+    if (cwd / ".git").exists():
+        project_destinations = [str(cwd / rel) for rel in PROJECT_DESTINATIONS]
+
     choices: list[Choice | str] = []
 
-    # Last-used destination first (if available and not already in default list)
-    if last_used and last_used not in DEFAULT_DESTINATIONS:
+    # Last-used destination first (if available and not already suggested below)
+    if last_used and last_used not in DEFAULT_DESTINATIONS and last_used not in project_destinations:
         choices.append(Choice(title=f"{last_used}  (last used)", value=last_used))
+
+    for dest in project_destinations:
+        choices.append(Choice(title=dest, value=dest))
 
     for dest in DEFAULT_DESTINATIONS:
         choices.append(Choice(title=dest, value=dest))
@@ -122,10 +160,14 @@ def prompt_select_skills(skills: list[dict]) -> list[dict]:
     Each item in *skills* must have ``name`` and ``description`` keys.
     Returns the selected subset (same dicts).
     """
+    term_width = Console().size.width
+    name_column = min(
+        max((len(s["name"]) for s in skills), default=0), _MAX_NAME_COLUMN
+    )
+
     choices = [
-        Choice(
-            title=_format_skill_label(s["name"], s["description"]),
-            value=s["name"],  # use name as the tracking value
+        _build_skill_choice(
+            s["name"], s.get("description", ""), name_column, term_width
         )
         for s in skills
     ]
@@ -135,7 +177,8 @@ def prompt_select_skills(skills: list[dict]) -> list[dict]:
         selected_names = questionary.checkbox(
             "Select skills to install (space to toggle, enter to confirm):",
             choices=choices,
-            style=STYLE,
+            style=SKILL_LIST_STYLE,
+            show_description=True,
         ).ask()
 
         if selected_names is None:
@@ -165,11 +208,20 @@ def prompt_confirm_actions(summary: str) -> bool:
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
-def _format_skill_label(name: str, description: str, max_desc: int = 256) -> str:
-    """Format a skill name + description for display in a list."""
-    if not description:
-        return name
-    desc = description[:max_desc]
-    if len(description) > max_desc:
-        desc += "…"
-    return f"{name} — {desc}"
+def _build_skill_choice(
+    name: str, description: str, name_column: int, term_width: int
+) -> Choice:
+    """Build a :class:`Choice` with a bold name column and a dimmed, truncated description."""
+    title: list[tuple[str, str]] = [("class:skill-name", name.ljust(name_column))]
+
+    description = (description or "").strip()
+    if description:
+        one_line = " ".join(description.split())
+        desc_column = max(
+            term_width - _ROW_PREFIX_WIDTH - name_column - 3, _MIN_DESC_COLUMN
+        )
+        desc_text = Text(one_line)
+        desc_text.truncate(desc_column, overflow="ellipsis")
+        title.append(("class:skill-desc", f"   {desc_text.plain}"))
+
+    return Choice(title=title, value=name, description=description or None)
