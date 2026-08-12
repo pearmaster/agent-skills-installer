@@ -56,8 +56,9 @@ def discover_skills(repo_path: Path) -> list[SkillInfo]:
 
     Layouts are tried in order, and the first one that yields anything wins:
 
-    1. ``skills/`` and ``.claude/skills/``, scanned recursively — so both
-       ``skills/<name>/`` and ``skills/<category>/<name>/`` work.
+    1. ``skills/``, then ``.claude/skills/``, each scanned recursively — so
+       both ``skills/<name>/`` and ``skills/<category>/<name>/`` work. As
+       soon as one of these roots yields a skill, the other is skipped.
     2. A ``SKILL.md`` at the repo root — the repo is itself one skill.
     3. A repo-wide scan, catching root-level collections (``<name>/SKILL.md``)
        and plugin layouts (``<plugin>/skills/<name>/SKILL.md``).
@@ -72,7 +73,10 @@ def discover_skills(repo_path: Path) -> list[SkillInfo]:
     for rel in PREFERRED_ROOTS:
         root = repo_path / rel
         if root.is_dir():
-            candidates.extend(_walk_for_skill_dirs(root))
+            found = _walk_for_skill_dirs(root)
+            if found:
+                candidates.extend(found)
+                break
 
     if not candidates and (repo_path / "SKILL.md").is_file():
         candidates.append(repo_path)
