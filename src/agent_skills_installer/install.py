@@ -14,12 +14,21 @@ from agent_skills_installer.skills import (
     copy_skill,
     describe_install_status,
     discover_skills,
+    resolve_dependencies,
 )
 
 _STATUS_PREFIXES = {
     "REPLACES": "Replaces existing skill with the same name.",
     "UPGRADE": "UPGRADE",
     "INSTALLED": "INSTALLED",
+}
+
+# Shown next to auto-installed dependencies in the summary, since the user
+# never picked them and may not have seen their status in the skill list.
+_DEPENDENCY_STATUS_NOTES = {
+    "REPLACES": "replaces an existing skill from another repo",
+    "UPGRADE": "upgrades the installed copy",
+    "INSTALLED": "already installed, will be refreshed",
 }
 
 
@@ -88,6 +97,7 @@ def run_install(
                         "name": s.name,
                         "description": description,
                         "source_path": s.source_path,
+                        "status": status,
                     }
                 )
 
@@ -104,14 +114,27 @@ def run_install(
             else:
                 selected = tui.prompt_select_skills(skill_dicts)
 
-            # 6. Confirmation (skip when skill was specified on CLI)
+            # 6. Pull in skills that the selected ones depend on
+            required_by = resolve_dependencies([s["name"] for s in selected], skills)
+            dependencies = [
+                {**s, "required_by": required_by[s["name"]]}
+                for s in skill_dicts
+                if s["name"] in required_by
+            ]
+
+            # 7. Confirmation (skip when skill was specified on CLI)
             if not skill_name:
-                summary = _build_summary(dest, repo_url, selected)
+                summary = _build_summary(dest, repo_url, selected, dependencies)
                 if not tui.prompt_confirm_actions(summary):
                     typer.echo("Aborted.")
                     raise typer.Exit(0)
+            elif dependencies:
+                typer.echo("Also installing dependencies:")
+                for item in dependencies:
+                    typer.echo(f"  • {_describe_dependency(item)}")
 
-            # 7. Copy skills
+            # 8. Copy skills
+            selected = selected + dependencies
             typer.echo()
             for item in selected:
                 src = item["source_path"]
@@ -122,7 +145,7 @@ def run_install(
         typer.echo(f"❌ {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    # 8. Update config
+    # 9. Update config
     cfg.set_last_destination(conf, str(dest))
     cfg.add_recent_repo(conf, repo_url)
     cfg.save_config(conf)
@@ -133,7 +156,16 @@ def run_install(
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
-def _build_summary(dest, repo_url, selected) -> str:
+def _describe_dependency(item: dict) -> str:
+    """One-line description of an auto-installed dependency and why it's included."""
+    text = f"{item['name']}  ← required by {', '.join(item['required_by'])}"
+    note = _DEPENDENCY_STATUS_NOTES.get(item.get("status"))
+    if note:
+        text += f"  ({note})"
+    return text
+
+
+def _build_summary(dest, repo_url, selected, dependencies=()) -> str:
     lines = [
         "",
         "┌─────────────────────────────────────────────",
@@ -145,6 +177,11 @@ def _build_summary(dest, repo_url, selected) -> str:
     ]
     for item in selected:
         lines.append(f"│    • {item['name']}")
+    if dependencies:
+        lines.append("│")
+        lines.append("│  Dependencies (installed automatically):")
+        for item in dependencies:
+            lines.append(f"│    • {_describe_dependency(item)}")
     lines.append("└─────────────────────────────────────────────")
     lines.append("")
     return "\n".join(lines)

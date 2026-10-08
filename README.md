@@ -63,6 +63,7 @@ agent-skills-installer update -d ~/.claude/skills/ -k skill-creator
    - a `SKILL.md` at the repo root — the repo is itself a single skill
    - a repo-wide search, covering root-level collections (`<name>/SKILL.md`) and plugin layouts (`<plugin>/skills/<name>/SKILL.md`)
 2. Each skill directory (containing a `SKILL.md` with a `name` in its frontmatter) is copied to the destination, named after that `name`
+   - Any other skill from the same repo whose name appears in a selected skill's `compatibility` frontmatter is treated as a dependency and installed too (transitively). The confirmation summary lists these and which skill required each one.
 3. `metadata.git-repo` and `metadata.git-sha` entries are added to the SKILL.md frontmatter to track the source repo and the commit the skill was copied at
 4. The `update` command uses that metadata to refresh skills from their original repos
 

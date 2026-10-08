@@ -5,6 +5,16 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0]
+
+### Added
+
+- Skills can depend on other skills from the same repo by naming them in their
+  `compatibility` frontmatter. Installing a skill also installs its dependencies
+  (transitively), and the confirmation summary lists each one along with the
+  skill that required it. With `--skill`, the dependencies are printed before
+  installing.
+
 ## [0.3.1]
 
 ### Fixed

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -20,6 +22,7 @@ class SkillInfo:
     description: str
     source_path: Path
     metadata: dict = field(default_factory=dict)
+    compatibility: str = ""
 
 
 # ── Discovery ────────────────────────────────────────────────────────
@@ -155,10 +158,20 @@ def _build_skill_infos(skill_dirs: list[Path]) -> list[SkillInfo]:
                 description=str(fm.get("description") or "").strip(),
                 source_path=directory,
                 metadata=metadata if isinstance(metadata, dict) else {},
+                compatibility=_compatibility_text(fm.get("compatibility")),
             )
         )
 
     return sorted(results, key=lambda s: s.name)
+
+
+def _compatibility_text(value: object) -> str:
+    """Flatten a frontmatter ``compatibility`` value into searchable text."""
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        return " ".join(str(v) for v in value)
+    return str(value)
 
 
 def is_safe_dir_name(name: str) -> bool:
@@ -176,6 +189,50 @@ def is_safe_dir_name(name: str) -> bool:
 
 def _warn(message: str) -> None:
     print(f"⚠️  {message}", file=sys.stderr)
+
+
+# ── Dependencies ─────────────────────────────────────────────────────
+
+
+def find_dependencies(skill: SkillInfo, available_names: Iterable[str]) -> list[str]:
+    """Return the names in *available_names* that *skill*'s ``compatibility`` mentions.
+
+    A name only counts as a whole token, so ``pdf`` is not found inside
+    ``pdf-tools`` or ``pdfs``. A skill never depends on itself.
+    """
+    if not skill.compatibility:
+        return []
+    return sorted(
+        name
+        for name in available_names
+        if name != skill.name
+        and re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", skill.compatibility)
+    )
+
+
+def resolve_dependencies(selected: Iterable[str], skills: list[SkillInfo]) -> dict[str, list[str]]:
+    """Find every skill the *selected* names depend on, directly or transitively.
+
+    Returns a mapping from each dependency that isn't already in *selected*
+    to the names of the skills that require it. Cycles are tolerated.
+    """
+    by_name = {s.name: s for s in skills}
+    selected = set(selected)
+    required_by: dict[str, list[str]] = {}
+    visited = set(selected)
+    queue = sorted(selected)
+
+    while queue:
+        name = queue.pop(0)
+        for dep in find_dependencies(by_name[name], by_name):
+            if dep in selected:
+                continue
+            required_by.setdefault(dep, []).append(name)
+            if dep not in visited:
+                visited.add(dep)
+                queue.append(dep)
+
+    return required_by
 
 
 # ── Frontmatter helpers ──────────────────────────────────────────────
